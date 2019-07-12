@@ -1,0 +1,284 @@
+
+'===============================
+' 2019  © Antoni Gawlikowski, Matplaneta
+'===============================
+
+
+
+'===|| Constants ||===
+
+  W = 1024            ' Width of the window
+  H = 768             ' Height of the window
+  SPEED = 15          ' Ball position update interval 
+  GAME_DELAY = 2      ' Paddle position update interval
+  WAIT_DELAY = 1000   ' New game countown delay
+  SPEEDUP_FREQ = 500  ' How often the ball gets faster
+  DEBUG = "True"      ' Show debug information?
+  PLAY = -1           ' Control variable. PLAY less tha ZERO means we're in a game. Used also for countdown
+
+
+' ===|| Window Settings ||===
+
+  GraphicsWindow.BackgroundColor = "#123456"
+  GraphicsWindow.Width = W
+  GraphicsWindow.Height = H
+  GraphicsWindow.CanResize = "False"
+
+  right = W + 10   ' corrected  x-position of screen edge
+  bot   = H + 10   ' corrected  y-position of screen edge
+
+  DELAY = GAME_DELAY
+
+' ===||  Shapes Settings  ||===
+
+    '** Paddles **
+        pw = 150  ' width
+        ph = 40   ' height
+        pv = 5    ' speed
+
+        p1c = "#66ff66"   ' paddle 1 color
+        p1x = W/2 - pw/2  ' paddle 1 x-coordinate
+        p1y = 0           ' paddle 1 y-coordinate
+        p1p = 0           ' paddle 1 points
+
+        p2c = "#ff3300"   ' paddle 2 color
+        p2x = W/2 - pw/2  ' paddle 2 x-coordinate
+        p2y = bot - ph    ' paddle 2 y-coordinate
+        p2p = 0           ' paddle 1 points
+
+        GraphicsWindow.BrushColor = p1c
+        p1 = Shapes.AddRectangle(pw, ph)
+
+        GraphicsWindow.BrushColor = p2c
+        p2 = Shapes.AddRectangle(pw, ph)
+      
+    '** Ball ** 
+        r = 30
+        bc = "#ffff00"
+        bx = 160
+        by = 360
+        bvx = 5
+        bvy = -5
+        delta_v = 0.2
+        frames_since_change = 0
+
+        GraphicsWindow.BrushColor = bc
+        b = Shapes.AddEllipse(r, r)
+
+
+
+' ===|| Text Settings ||===
+
+  newLine = Text.GetCharacter(010)  ' new line character for use in drawn text ("\n" doesn't work)
+
+'    ** Debug txt **
+'    ** it's only shown if DEBUG flag is set to true in the CONSTANTS section
+    If DEBUG Then
+      numberOfChanges = 0
+      txt = "Ball velocity: (" + bvx + "," + bvy + ")" + newLine + "Frames since: " + frames_since_change + newLine + "Number of changes: " + numberOfChanges
+      dt = Shapes.AddText(txt)
+      Shapes.Move(dt, W - 150, 0)
+    EndIf
+        
+'    ** Points txt **
+    pointsTxt = "Player 1 (TOP): " + p1p + newLine + "Player 2 (BOT): " + p2p
+    pt = Shapes.AddText(pointsTxt)
+
+
+
+'==|| Events Hooks ||===
+
+  Timer.Interval = SPEED
+  Timer.Tick = DrawBall
+  GraphicsWindow.KeyDown = KeyboardInput
+  GraphicsWindow.KeyUp   = ResetVelocities
+
+
+'==|| Subroutines ||===
+
+Sub DrawPaddles
+  ' If a paddle would go out of the screen, 
+  ' Reverse it to the farthest legal position.
+  
+  ' Otherwise just add velocity to it's position
+  ' And draw it in the new place
+    If p1x < 0 Then 
+      p1x = 0
+    ElseIf p1x > right  - pw Then
+      p1x = right - pw
+    Else
+      p1x = p1x + p1v
+    EndIf
+    
+    Shapes.Move(p1, p1x, p1y)
+    
+    If p2x < 0 Then 
+      p2x = 0
+    ElseIf p2x > right  - pw Then
+      p2x = right - pw
+    Else
+      p2x = p2x + p2v
+    EndIf
+
+    Shapes.Move(p2, p2x, p2y)
+  EndSub
+
+  Sub DrawBall
+    CheckScreenCollision()
+    CheckPaddleCollision()
+    bx = bx + bvx
+    by = by + bvy
+    Shapes.Move(b, bx, by)
+  EndSub
+
+  Sub CheckScreenCollision
+    ' Bouncing off the walls:
+    If bx >= right - r Or bx <= 0 Then
+      bx = bx - bvx
+      bvx = -bvx
+    EndIf
+    
+    ' Player 1 scores
+    If by > bot Then
+      p1p = p1p + 1
+      Restart()
+    EndIf
+    
+    ' Player 2 scores
+    If by < 0 - r Then
+      p2p = p2p + 1
+      Restart()
+    EndIf
+  EndSub
+
+  Sub CheckPaddleCollision
+    ' 1st Paddle
+    If bx + r >= p2x And bx <= p2x + pw And by + r >= p2y And by < p2y + ph Then
+      by = by - bvy ' Reversing the last move to avoid intersection
+      bvy = -bvy
+    EndIf
+    
+    '2nd Paddle
+    If bx + r >= p1x And bx <= p1x + pw And by + r >= p1y And by < p1y + ph Then
+      by = by - bvy ' Reversing the last move to avoid intersection
+      bvy = -bvy
+    EndIf 
+  EndSub
+
+Sub KeyboardInput
+  ' As long as a key is pressed, the velocity of the paddle is non-zero
+  ' Instead of DRAWING paddles in new place every time a player presses the key
+  ' we just manipulate the velocities. Drawing is done in the main loop EVERY frame
+  ' sometimes it's just in the same place.
+  
+    lastKey = GraphicsWindow.LastKey
+    
+    If lastKey = "D" Then
+      p1v = pv
+    ElseIf lastKey = "A" Then
+      p1v = -pv
+    ElseIf lastKey = "Right" Then
+      p2v = pv
+    ElseIf lastKey = "Left" Then
+      p2v = -pv
+    EndIf
+  EndSub
+
+Sub ResetVelocities
+  ' When the key is no longer pressed we make corresponding paddle's velocity 0.
+  ' We need to control which key was released, because we don't want player 1
+  ' releasing his key to stop movement of paddle 2
+  
+    lastKey = GraphicsWindow.LastKey
+    
+    If lastKey = "D" Or lastKey = "A" Then
+      p1v = 0
+    ElseIf lastKey = "Left" Or lastKey = "Right" Then
+      p2v = 0
+    EndIf
+  EndSub
+
+  Sub UpdateText
+    txt = "Ball velocity: (" + bvx + "," + bvy + ")" + newLine + "Frames since: " + frames_since_change + newLine + "Number of changes: " + numberOfChanges
+    Shapes.SetText(dt, txt)
+  EndSub
+
+  Sub IncreaseVelocity
+    If frames_since_change > SPEEDUP_FREQ Then
+      If bvx < 0 Then
+        bvx = bvx - delta_v
+      Else
+        bvx = bvx + delta_v
+      EndIf
+      
+      If bvy < 0 Then
+        bvy = bvy - delta_v
+      Else
+        bvy = bvy + delta_v
+      EndIf 
+      
+      frames_since_change = 0
+      numberOfChanges = numberOfChanges + 1
+    EndIf
+  EndSub
+
+  Sub Restart
+    bx = 160
+    by = 360
+    bvx = 0
+    bvy = 0
+    
+    p1x = W/2 - pw/2  
+    p2x = W/2 - pw/2
+    
+    numberOfChanges = 0
+    frames_since_change = 0
+    
+    pointsTxt = "Player 1 (TOP): " + p1p + newLine + "Player 2 (BOT): " + p2p
+    Shapes.SetText(pt, pointsTxt)
+    
+    ' ------- New Round Text ------
+    nrt_txt = "NEW ROUND IN"
+    nrt2_txt = "3"
+    
+    nrt = Shapes.AddText(nrt_txt)
+    nrt2 = Shapes.AddText(nrt2_txt)
+    
+    Shapes.Zoom(nrt, 5, 5)
+    Shapes.Zoom(nrt2, 20, 20)
+    
+    Shapes.Move(nrt,  W/2 - 50, H/2 - 150)
+    Shapes.Move(nrt2, W/2, H/2 + 50)
+    
+    PLAY = 5
+    DELAY = WAIT_DELAY
+  EndSub
+
+'##################
+'==== Main Loop =====
+'##################
+While "True"
+  If PLAY < 0 Then
+    
+    DrawPaddles()
+    frames_since_change = frames_since_change + 1
+    IncreaseVelocity()  
+    
+    If DEBUG Then
+      UpdateText()
+    EndIf
+    
+  ElseIf PLAY = 0 Then
+    bvx = 5
+    bvy = -5
+    DELAY = GAME_DELAY
+    Shapes.Remove(nrt)
+    Shapes.Remove(nrt2)
+    PLAY = PLAY - 1
+  Else
+    PLAY = PLAY - 1
+    Shapes.SetText(nrt2, PLAY)
+  EndIf
+  
+  Program.Delay(DELAY)
+EndWhile
